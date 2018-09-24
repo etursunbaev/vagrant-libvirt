@@ -1,0 +1,49 @@
+---
+- name: Install
+  hosts: all
+  remote_user: root
+  become: true
+  vars:
+    admin_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDSe53SAj+kPnpi03aGbCRuLAce0LWn5kGJrXO7gMDjK+wnLcfra4E6jr4F3HT/6mbKvDZSAwSS2kb2m+BxnV4xVCVcRkvVZJg+WbODdnCZKw4bJpcyCtWe699/ch+1qGvxjG2Dkf+SWdhimyg31mr2g7mB0xLshEXAWVa/jHKXP/zBdE/Usfx0RGijODJcMAjC476mlwy23CI0bT4QE/9J14099sjsqkYidsZjJnlugrLvTTorpNJ+2L4DP4st2MWwhUPGLOJoLL8kZnN9GfTyjRgn5HVxYFOIcUpiO25/CvCFLVkX5522hI0eVkhMuox3Gb+YeLESkh5SGsKNFwbF tilek@sysnet
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDBA5beQN9b5L7SMd1fMqks9k5PgeHrjq7FXZFCcsqVPYJfJKd5QDPFZFkSsKyPyTElNi9+oV/qXYto19wx7IvjetAEkKM75N8Ok/kJv9Z+RZmjfWUAcvBHOMQUtlxrhyeL1prfnDGjNoocFkgIiBBHugUA57iWyEb98kuh8OOUwFqA7tSscj+UWyN7e+n6ZWy7Hl2m8IZBU3tJL8449VtgbeBxWMNwEnCI5w4HkS3PcrpLs2meJ9iVbEFFR9kxY3SISKFeVWNbUy2EcC81xlxW1CId98LQ6a0Gyxd+J9DvcQv3wdkImPS7tymqcU5RTdGDOHaHK0E92wrX67G/5C59 eldar@acer
+      
+  tasks:
+    - name: Sources list
+      apt_repository:
+        repo: deb http://apt:3142/debian stretch main contrib
+        state: present
+
+    - name: Configure Root access
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#PermitRootLogin prohibit-password'
+        line: 'PermitRootLogin yes'
+      register: config
+      
+    - name: Reload
+      systemd:
+        name: sshd.service
+        state: restarted
+      when: config.changed
+    
+    - name: Add admin keys
+      authorized_key: 
+        user: root
+        state: present
+        key: "{{ item }}"
+      with_items: "{{ admin_keys }}"
+    
+    - name: Configure static route
+      raw: |
+        ip route add default via 172.16.0.1
+        ip route delete 192.168.121.0/24 dev ens5
+      ignore_errors: yes  
+    
+    - name: Get IP address
+      shell: ip addr show ens6 | grep -Po 'inet \K[\d.]+'
+      register: public_ip
+    
+    - name: Show
+      debug:
+        msg: "{{ public_ip.stdout }}"
